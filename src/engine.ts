@@ -1,0 +1,552 @@
+/**
+ * PhosphorGrid — GPU WebGL phosphor display simulator.
+ *
+ * Decomposes each source pixel into its physical R, G, B subpixel
+ * components (stripes/dots) and applies real display optics:
+ * - Proper sRGB gamma encode/decode (IEC 61966-2-1)
+ * - Aperture Grille / Shadow Mask / Slot Mask patterns
+ * - Cosine-shaped phosphor glow + inter-channel bloom
+ * - Analog noise, flicker, vignette, scanlines
+ * - Split-view comparison (original ↔ phosphor)
+ */
+
+export interface PhosphorGridOptions {
+  canvas: HTMLCanvasElement;
+  subpixelWidth?: number;           // Physical subpixel width in screen pixels
+  gap?: number;                     // Gap between subpixel triads
+  renderingMode?: 'grid' | 'cleartype';
+  sharpness?: number;               // Cosine phosphor falloff exponent
+  bloom?: number;                   // Inter-channel beam bleed
+  curvature?: number;               // CRT barrel distortion (0 = flat)
+  vignette?: number;                // Corner darkening
+  scanlines?: number;               // Horizontal scanline overlay
+  maskType?: 'aperture' | 'shadow' | 'slot';
+  colorTemp?: [number, number, number]; // [R, G, B] multipliers (from Kelvin)
+  brightness?: number;              // Black level offset
+  contrast?: number;                // Contrast scaling
+  saturation?: number;              // Color saturation
+  lodBias?: number;                 // Texture LOD bias (negative = sharper)
+  detailBoost?: number;             // High-frequency highlight emphasis
+  noise?: number;                   // Film grain / analog noise (0–1)
+  flicker?: number;                 // Phosphor persistence flicker (0–1)
+}
+
+// Cached shader resource locations (populated once at init, never per-frame)
+type UniformCache = { [name: string]: WebGLUniformLocation | null };
+
+export class PhosphorGrid {
+  private canvas: HTMLCanvasElement;
+  private gl: WebGLRenderingContext | WebGL2RenderingContext;
+  private isWebGL2 = false;
+  private program: WebGLProgram | null = null;
+  private texture: WebGLTexture | null = null;
+  private buffer: WebGLBuffer | null = null;
+
+  // Cached locations — set once in initWebGL(), used every render()
+  private attribPosition = -1;
+  private uniforms: UniformCache = {};
+
+  // Engine state
+  private subpixelWidth: number;
+  private gap: number;
+  private renderingMode: 'grid' | 'cleartype';
+  private sharpness: number;
+  private bloom: number;
+  private curvature: number;
+  private vignette: number;
+  private scanlines: number;
+  private maskType: 'aperture' | 'shadow' | 'slot';
+  private colorTemp: [number, number, number];
+  private brightness: number;
+  private contrast: number;
+  private saturation: number;
+  private lodBias: number;
+  private detailBoost: number;
+  private noise: number;
+  private flicker: number;
+
+  constructor(options: PhosphorGridOptions) {
+    this.canvas = options.canvas;
+
+    // Prefer WebGL 2 for native NPOT mipmap support
+    let gl: WebGL2RenderingContext | WebGLRenderingContext | null =
+      this.canvas.getContext('webgl2', { preserveDrawingBuffer: true }) as WebGL2RenderingContext | null;
+    if (gl) {
+      this.isWebGL2 = true;
+    } else {
+      gl = (
+        this.canvas.getContext('webgl', { preserveDrawingBuffer: true }) ||
+        this.canvas.getContext('experimental-webgl', { preserveDrawingBuffer: true })
+      ) as WebGLRenderingContext | null;
+    }
+    if (!gl) throw new Error('WebGL not supported in this browser.');
+    this.gl = gl;
+
+    this.subpixelWidth  = options.subpixelWidth  ?? 2;
+    this.gap            = options.gap            ?? 1;
+    this.renderingMode  = options.renderingMode  ?? 'grid';
+    this.sharpness      = options.sharpness      ?? 1.5;
+    this.bloom          = options.bloom          ?? 0.15;
+    this.curvature      = options.curvature      ?? 0.0;
+    this.vignette       = options.vignette       ?? 0.0;
+    this.scanlines      = options.scanlines      ?? 0.0;
+    this.maskType       = options.maskType       ?? 'aperture';
+    this.colorTemp      = options.colorTemp      ?? [1.0, 1.0, 1.0];
+    this.brightness     = options.brightness     ?? 0.0;
+    this.contrast       = options.contrast       ?? 1.0;
+    this.saturation     = options.saturation     ?? 1.0;
+    this.lodBias        = options.lodBias        ?? 0.0;
+    this.detailBoost    = options.detailBoost    ?? 0.0;
+    this.noise          = options.noise          ?? 0.0;
+    this.flicker        = options.flicker        ?? 0.0;
+
+    this.initWebGL();
+  }
+
+  // ─────────────────────────────────────────────
+  // WebGL Initialization
+  // ─────────────────────────────────────────────
+
+  private initWebGL(): void {
+    const gl = this.gl;
+
+    // Vertex shader: covers the full viewport with a clip-space quad
+    const vsSource = `
+      attribute vec2 position;
+      varying vec2 v_texCoord;
+      void main() {
+        v_texCoord = position * 0.5 + 0.5;
+        gl_Position = vec4(position, 0.0, 1.0);
+      }
+    `;
+
+    // Fragment shader: full phosphor display simulation
+    const fsSource = `
+      precision mediump float;
+      varying vec2 v_texCoord;
+
+      // ── Uniforms ──────────────────────────────────
+      uniform sampler2D u_texture;
+      uniform float u_subpixel_width;
+      uniform float u_gap;
+      uniform float u_rendering_mode;   // 0 = Physical Grid, 1 = ClearType
+      uniform float u_sharpness;
+      uniform float u_bloom;
+      uniform float u_curvature;
+      uniform float u_vignette;
+      uniform float u_scanlines;
+      uniform float u_mask_type;        // 0 = Aperture, 1 = Shadow, 2 = Slot
+      uniform vec3  u_color_temp;
+      uniform float u_brightness;
+      uniform float u_contrast;
+      uniform float u_saturation;
+      uniform float u_lod_bias;
+      uniform float u_detail_boost;
+      uniform vec2  u_canvas_resolution;
+      uniform float u_noise;
+      uniform float u_flicker;
+      uniform float u_time;
+      uniform float u_split_x;         // 0 = full phosphor, >0 = split (left=original)
+
+      // ── Proper IEC 61966-2-1 sRGB transfer functions ──
+
+      // sRGB → linear light (gamma expand)
+      vec3 srgbDecode(vec3 c) {
+        c = clamp(c, 0.0, 1.0);
+        vec3 lo = c / 12.92;
+        vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));
+        return mix(lo, hi, step(vec3(0.04045), c));
+      }
+
+      // linear light → sRGB (gamma compress)
+      vec3 srgbEncode(vec3 c) {
+        c = clamp(c, 0.0, 1.0);
+        vec3 lo = c * 12.92;
+        vec3 hi = 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055;
+        return mix(lo, hi, step(vec3(0.0031308), c));
+      }
+
+      // ── CRT barrel distortion ──
+      vec2 curve(vec2 uv, float d) {
+        if (d == 0.0) return uv;
+        uv = (uv - 0.5) * 2.0;
+        uv.x *= 1.0 + uv.y * uv.y * d * 0.15;
+        uv.y *= 1.0 + uv.x * uv.x * d * 0.20;
+        return uv * 0.5 + 0.5;
+      }
+
+      // ── Color grading (linear space) ──
+      vec3 adjustColor(vec3 c, float brightness, float contrast, float saturation) {
+        c = (c - 0.5) * contrast + 0.5 + brightness;
+        c = clamp(c, 0.0, 1.0);
+        float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        return clamp(mix(vec3(luma), c, saturation), 0.0, 1.0);
+      }
+
+      // ── High-frequency detail boost (stars/sparks) ──
+      vec3 sampleAndBoost(vec2 uv) {
+        vec3 sharp = texture2D(u_texture, uv, u_lod_bias).rgb;
+        if (u_detail_boost > 0.0) {
+          vec3 soft = texture2D(u_texture, uv, u_lod_bias + 2.5).rgb;
+          float sl = dot(sharp, vec3(0.2126, 0.7152, 0.0722));
+          float bl = dot(soft,  vec3(0.2126, 0.7152, 0.0722));
+          if (sl > bl + 0.005) {
+            sharp = clamp(sharp + sharp * (sl - bl) * u_detail_boost * 2.0, 0.0, 1.0);
+          }
+        }
+        return sharp;
+      }
+
+      // ── Pseudo-random hash (texel-stable, no texture lookup) ──
+      float hash21(vec2 p) {
+        return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+      }
+
+      // ── Main ──────────────────────────────────────
+      void main() {
+        // 1. CRT barrel distortion
+        vec2 uv = curve(v_texCoord, u_curvature);
+
+        // Black border outside the curved screen boundary
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+          gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+          return;
+        }
+
+        // 2. Split-view: pixels left of u_split_x show the original image
+        if (u_split_x > 0.0) {
+          float line_w = 2.0 / u_canvas_resolution.x;
+          if (abs(uv.x - u_split_x) < line_w) {
+            // White divider line with amber tint
+            gl_FragColor = vec4(1.0, 0.92, 0.72, 1.0);
+            return;
+          }
+          if (uv.x < u_split_x) {
+            gl_FragColor = vec4(texture2D(u_texture, uv).rgb, 1.0);
+            return;
+          }
+        }
+
+        // 3. Sample source → linear light
+        vec3 linear_color;
+        if (u_rendering_mode > 0.5) {
+          // ClearType mode: spatially offset R/G/B by 1/3 subpixel
+          float pw = 1.0 / u_canvas_resolution.x;
+          vec3 rs = adjustColor(sampleAndBoost(uv - vec2(pw / 3.0, 0.0)), u_brightness, u_contrast, u_saturation);
+          vec3 gs = adjustColor(sampleAndBoost(uv),                         u_brightness, u_contrast, u_saturation);
+          vec3 bs = adjustColor(sampleAndBoost(uv + vec2(pw / 3.0, 0.0)), u_brightness, u_contrast, u_saturation);
+          linear_color = vec3(
+            srgbDecode(rs * u_color_temp).r,
+            srgbDecode(gs * u_color_temp).g,
+            srgbDecode(bs * u_color_temp).b
+          );
+        } else {
+          // Physical Grid mode: single sample per fragment
+          vec3 adjusted = adjustColor(sampleAndBoost(uv), u_brightness, u_contrast, u_saturation);
+          linear_color = srgbDecode(adjusted * u_color_temp);
+        }
+
+        // 4. Physical phosphor mask (screen-space coordinates)
+        vec2 px = floor(gl_FragCoord.xy);
+
+        float sw      = u_subpixel_width;
+        float macro_w = sw * 3.0 + u_gap * 3.0;   // Total triad width (lit + dark)
+        float macro_h = sw * 3.0 + u_gap;           // Total triad height
+
+        // Horizontal stagger per mask type
+        float x_off = 0.0;
+        if (u_mask_type > 1.5) {
+          // Slot Mask: alternating half-period stagger every 2 rows
+          x_off = mod(floor(px.y / (macro_h * 2.0)), 2.0) * (macro_w * 0.5);
+        } else if (u_mask_type > 0.5) {
+          // Shadow Mask: alternating half-period stagger every row
+          x_off = mod(floor(px.y / macro_h), 2.0) * (macro_w * 0.5);
+        }
+
+        float lx = mod(px.x + x_off, macro_w);
+        float ly = mod(px.y,          macro_h);
+
+        // Luma compensation: counter the mask's overall brightness reduction
+        float active_w  = sw * 3.0;
+        float luma_boost = 3.0 * macro_w / max(active_w, 1.0);
+
+        // Vertical weight: smooth gap or scanline boundary
+        float vert_w = 1.0;
+        if (u_gap > 0.0 || u_mask_type > 0.5) {
+          float v_phase = (ly / macro_h) * 6.283185;
+          vert_w = pow(cos(v_phase) * 0.5 + 0.5, u_sharpness);
+        }
+
+        // Horizontal cosine-shaped phosphor stripe weights (R / G / B)
+        float pi2  = 6.283185;
+        float rw = pow(cos((lx              / macro_w) * pi2) * 0.5 + 0.5, u_sharpness);
+        float gw = pow(cos(((lx - macro_w / 3.0) / macro_w) * pi2) * 0.5 + 0.5, u_sharpness);
+        float bw = pow(cos(((lx - macro_w * 2.0 / 3.0) / macro_w) * pi2) * 0.5 + 0.5, u_sharpness);
+
+        // Beam bloom: each channel bleeds into its neighbours
+        float norm = 1.0 / (1.0 + 2.0 * u_bloom);
+        vec3 masked;
+        masked.r = linear_color.r * (rw + (gw + bw) * u_bloom) * luma_boost * vert_w * norm;
+        masked.g = linear_color.g * (gw + (rw + bw) * u_bloom) * luma_boost * vert_w * norm;
+        masked.b = linear_color.b * (bw + (rw + gw) * u_bloom) * luma_boost * vert_w * norm;
+
+        // 5. Vignette (dark corners)
+        if (u_vignette > 0.0) {
+          float vd = length(uv - 0.5);
+          masked *= smoothstep(0.707, 0.707 - u_vignette * 0.707, vd);
+        }
+
+        // 6. Horizontal scanlines
+        if (u_scanlines > 0.0) {
+          float scan = sin(px.y * 3.141593) * 0.5 + 0.5;
+          masked *= mix(1.0, scan, u_scanlines);
+        }
+
+        // 7. Phosphor flicker (analog persistence variation)
+        if (u_flicker > 0.0) {
+          float fw = sin(u_time * 94.248 + sin(u_time * 13.7) * 5.0) * 0.5 + 0.5;
+          masked *= 1.0 - u_flicker * 0.08 * fw;
+        }
+
+        // 8. Encode back to sRGB display space
+        vec3 out_color = srgbEncode(masked);
+
+        // 9. Film grain applied in display domain (after gamma)
+        if (u_noise > 0.0) {
+          float t_off = fract(u_time * 23.174);
+          float grain = hash21(v_texCoord + vec2(t_off, t_off * 0.7)) - 0.5;
+          out_color = clamp(out_color + grain * u_noise * 0.15, 0.0, 1.0);
+        }
+
+        gl_FragColor = vec4(out_color, 1.0);
+      }
+    `;
+
+    const vs = this.compileShader(gl.VERTEX_SHADER, vsSource);
+    const fs = this.compileShader(gl.FRAGMENT_SHADER, fsSource);
+    if (!vs || !fs) return;
+
+    this.program = gl.createProgram();
+    if (!this.program) return;
+
+    gl.attachShader(this.program, vs);
+    gl.attachShader(this.program, fs);
+    gl.linkProgram(this.program);
+
+    if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) {
+      console.error('PhosphorGrid shader link error:', gl.getProgramInfoLog(this.program));
+      return;
+    }
+
+    // Cache attribute location once
+    this.attribPosition = gl.getAttribLocation(this.program, 'position');
+
+    // Cache all uniform locations once — never call getUniformLocation per frame
+    const uniformNames = [
+      'u_subpixel_width', 'u_gap', 'u_rendering_mode', 'u_sharpness',
+      'u_bloom', 'u_curvature', 'u_vignette', 'u_scanlines', 'u_mask_type',
+      'u_color_temp', 'u_brightness', 'u_contrast', 'u_saturation',
+      'u_lod_bias', 'u_detail_boost', 'u_canvas_resolution',
+      'u_noise', 'u_flicker', 'u_time', 'u_split_x',
+    ];
+    for (const name of uniformNames) {
+      this.uniforms[name] = gl.getUniformLocation(this.program, name);
+    }
+
+    // Full-screen clip-space quad (two triangles)
+    const vertices = new Float32Array([-1, -1,  1, -1,  -1, 1,  -1, 1,  1, -1,  1, 1]);
+    this.buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+    // Texture: trilinear filtering for clean minification
+    this.texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  }
+
+  private compileShader(type: number, source: string): WebGLShader | null {
+    const gl = this.gl;
+    const shader = gl.createShader(type);
+    if (!shader) return null;
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      console.error('PhosphorGrid shader compile error:', gl.getShaderInfoLog(shader));
+      gl.deleteShader(shader);
+      return null;
+    }
+    return shader;
+  }
+
+  // ─────────────────────────────────────────────
+  // Public API
+  // ─────────────────────────────────────────────
+
+  /** Updates engine parameters without re-compiling shaders. */
+  public updateOptions(options: Partial<Omit<PhosphorGridOptions, 'canvas'>>): void {
+    if (options.subpixelWidth !== undefined) this.subpixelWidth = options.subpixelWidth;
+    if (options.gap           !== undefined) this.gap           = options.gap;
+    if (options.renderingMode !== undefined) this.renderingMode = options.renderingMode;
+    if (options.sharpness     !== undefined) this.sharpness     = options.sharpness;
+    if (options.bloom         !== undefined) this.bloom         = options.bloom;
+    if (options.curvature     !== undefined) this.curvature     = options.curvature;
+    if (options.vignette      !== undefined) this.vignette      = options.vignette;
+    if (options.scanlines     !== undefined) this.scanlines     = options.scanlines;
+    if (options.maskType      !== undefined) this.maskType      = options.maskType;
+    if (options.colorTemp     !== undefined) this.colorTemp     = options.colorTemp;
+    if (options.brightness    !== undefined) this.brightness    = options.brightness;
+    if (options.contrast      !== undefined) this.contrast      = options.contrast;
+    if (options.saturation    !== undefined) this.saturation    = options.saturation;
+    if (options.lodBias       !== undefined) this.lodBias       = options.lodBias;
+    if (options.detailBoost   !== undefined) this.detailBoost   = options.detailBoost;
+    if (options.noise         !== undefined) this.noise         = options.noise;
+    if (options.flicker       !== undefined) this.flicker       = options.flicker;
+  }
+
+  /**
+   * Renders one frame of the phosphor simulation.
+   * @param source  Source image or video element
+   * @param isInspect  true = render at 1:1 subpixel resolution (no downscale)
+   * @param time    Current time in seconds (drives flicker and noise animation)
+   * @param splitX  0 = full phosphor render; 0–1 = split at UV position
+   */
+  public render(
+    source: HTMLImageElement | HTMLVideoElement,
+    isInspect = false,
+    time = 0,
+    splitX = 0.0,
+  ): void {
+    const gl = this.gl;
+    if (!this.program || !this.texture) return;
+
+    const w = source instanceof HTMLImageElement ? source.naturalWidth  : source.videoWidth;
+    const h = source instanceof HTMLImageElement ? source.naturalHeight : source.videoHeight;
+    if (!w || !h) return;
+
+    // ── Determine canvas output dimensions ──────
+    let finalWidth: number;
+    let finalHeight: number;
+
+    if (isInspect) {
+      // Inspect mode: 1 source pixel → 1 full phosphor triad
+      const macroSize = (this.subpixelWidth * 3) + (this.gap * 3);
+      finalWidth  = w * macroSize;
+      finalHeight = h * macroSize;
+      // Guard against GPU texture size limits
+      const maxSize = 16384;
+      if (finalWidth > maxSize || finalHeight > maxSize) {
+        const scale = Math.min(maxSize / finalWidth, maxSize / finalHeight);
+        finalWidth  = Math.floor(finalWidth  * scale);
+        finalHeight = Math.floor(finalHeight * scale);
+      }
+    } else {
+      // Fit-to-viewport mode: letter/pillar box to fill container
+      const containerWidth  = this.canvas.parentElement?.clientWidth  || 500;
+      const containerHeight = this.canvas.parentElement?.clientHeight || 500;
+      const imageAspect     = w / h;
+      const containerAspect = containerWidth / containerHeight;
+      let displayWidth: number;
+      let displayHeight: number;
+      if (imageAspect > containerAspect) {
+        displayWidth  = containerWidth;
+        displayHeight = Math.floor(containerWidth / imageAspect);
+      } else {
+        displayHeight = containerHeight;
+        displayWidth  = Math.floor(containerHeight * imageAspect);
+      }
+      const dpr  = window.devicePixelRatio || 1;
+      finalWidth  = Math.floor(displayWidth  * dpr);
+      finalHeight = Math.floor(displayHeight * dpr);
+    }
+
+    this.canvas.width  = finalWidth;
+    this.canvas.height = finalHeight;
+    gl.viewport(0, 0, finalWidth, finalHeight);
+
+    // ── Upload source pixels to GPU texture ──────
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+
+    // Generate mipmaps for clean downscaling
+    const isPOT = Number.isInteger(Math.log2(w)) && Number.isInteger(Math.log2(h));
+    if (this.isWebGL2 || isPOT) {
+      gl.generateMipmap(gl.TEXTURE_2D);
+    } else {
+      // WebGL 1 NPOT fallback: disable mipmaps
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    }
+
+    // ── Execute shader pipeline ──────────────────
+    gl.useProgram(this.program);
+    gl.enableVertexAttribArray(this.attribPosition);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+    gl.vertexAttribPointer(this.attribPosition, 2, gl.FLOAT, false, 0, 0);
+
+    const u = this.uniforms;
+    const scale = isInspect ? 1.0 : (window.devicePixelRatio || 1);
+
+    let maskVal = 0.0;
+    if (this.maskType === 'shadow') maskVal = 1.0;
+    if (this.maskType === 'slot')   maskVal = 2.0;
+
+    gl.uniform1f(u['u_subpixel_width'],   this.subpixelWidth * scale);
+    gl.uniform1f(u['u_gap'],              this.gap           * scale);
+    gl.uniform1f(u['u_rendering_mode'],   this.renderingMode === 'cleartype' ? 1.0 : 0.0);
+    gl.uniform1f(u['u_sharpness'],        this.sharpness);
+    gl.uniform1f(u['u_bloom'],            this.bloom);
+    gl.uniform1f(u['u_curvature'],        this.curvature);
+    gl.uniform1f(u['u_vignette'],         this.vignette);
+    gl.uniform1f(u['u_scanlines'],        this.scanlines);
+    gl.uniform1f(u['u_mask_type'],        maskVal);
+    gl.uniform3fv(u['u_color_temp'],      this.colorTemp);
+    gl.uniform1f(u['u_brightness'],       this.brightness);
+    gl.uniform1f(u['u_contrast'],         this.contrast);
+    gl.uniform1f(u['u_saturation'],       this.saturation);
+    gl.uniform1f(u['u_lod_bias'],         this.lodBias);
+    gl.uniform1f(u['u_detail_boost'],     this.detailBoost);
+    gl.uniform2f(u['u_canvas_resolution'], finalWidth, finalHeight);
+    gl.uniform1f(u['u_noise'],            this.noise);
+    gl.uniform1f(u['u_flicker'],          this.flicker);
+    gl.uniform1f(u['u_time'],             time);
+    gl.uniform1f(u['u_split_x'],          splitX);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+
+  /** Returns a snapshot of the current engine configuration. */
+  public getOptions(): Omit<PhosphorGridOptions, 'canvas'> {
+    return {
+      subpixelWidth: this.subpixelWidth,
+      gap:           this.gap,
+      renderingMode: this.renderingMode,
+      sharpness:     this.sharpness,
+      bloom:         this.bloom,
+      curvature:     this.curvature,
+      vignette:      this.vignette,
+      scanlines:     this.scanlines,
+      maskType:      this.maskType,
+      colorTemp:     [...this.colorTemp],
+      brightness:    this.brightness,
+      contrast:      this.contrast,
+      saturation:    this.saturation,
+      lodBias:       this.lodBias,
+      detailBoost:   this.detailBoost,
+      noise:         this.noise,
+      flicker:       this.flicker,
+    };
+  }
+
+  /** Releases all GPU resources. Call when the engine is no longer needed. */
+  public dispose(): void {
+    const gl = this.gl;
+    if (this.program) { gl.deleteProgram(this.program);   this.program = null; }
+    if (this.texture) { gl.deleteTexture(this.texture);   this.texture = null; }
+    if (this.buffer)  { gl.deleteBuffer(this.buffer);     this.buffer  = null; }
+    this.uniforms = {};
+  }
+}

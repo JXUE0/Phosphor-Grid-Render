@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phosphor Grid Simulator</title>
+  <meta name="description" content="GPU-accelerated CRT phosphor subpixel renderer. Decompose pixels into physical R, G, B stripes and simulate real display optics via WebGL.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ── Design Tokens (Amber Dark v2.1) ─────────────── */
+    :root {
+      --bg-void:        #0B0A09;
+      --bg-card:        #151311;
+      --bg-card-hover:  #1c1a17;
+      --color-primary:  #f59e0b;
+      --color-glow:     #fbbf24;
+      --color-bone:     #EFECE6;
+      --color-muted:    #928E85;
+      --color-border:   rgba(255,255,255,0.06);
+      --radius-md:      14px;
+      --radius-sm:      8px;
+      --radius-pill:    100px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-void);
+      color: var(--color-bone);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 24px 60px;
+      overflow-x: hidden;
+    }
+
+    /* ── Header ───────────────────────────────────────── */
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+      max-width: 700px;
+    }
+
+    h1 {
+      font-family: 'Bricolage Grotesque', sans-serif;
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      margin-bottom: 14px;
+      background: linear-gradient(135deg, var(--color-bone) 20%, var(--color-primary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    header p {
+      font-size: 1rem;
+      color: var(--color-muted);
+      line-height: 1.65;
+    }
+
+    /* ── Main layout ──────────────────────────────────── */
+    main {
+      width: 100%;
+      max-width: 1440px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    /* ── Control panel ────────────────────────────────── */
+    .control-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 24px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.55);
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .section-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-primary);
+      border-bottom: 1px solid rgba(245,158,11,0.2);
+      padding-bottom: 7px;
+      margin-bottom: 2px;
+    }
+
+    .control-group label {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--color-bone);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .control-group label span {
+      color: var(--color-glow);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+    }
+
+    /* Sliders */
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--color-primary);
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(245,158,11,0.5);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+      box-shadow: 0 0 12px rgba(245,158,11,0.7);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--color-primary);
+      border: none;
+      cursor: pointer;
+    }
+
+    /* Select */
+    select {
+      width: 100%;
+      background: rgba(0,0,0,0.4);
+      color: var(--color-bone);
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      outline: none;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    select:hover { border-color: var(--color-primary); }
+    select option { background: #1c1a17; }
+
+    /* Radio */
+    .radio-group { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+    .radio-group label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.875rem;
+      cursor: pointer;
+      justify-content: flex-start;
+    }
+    input[type="radio"] { accent-color: var(--color-primary); cursor: pointer; }
+
+    /* ── Preset buttons ───────────────────────────────── */
+    .presets-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+    }
+
+    .preset-btn {
+      background: rgba(245,158,11,0.05);
+      border: 1px solid rgba(245,158,11,0.2);
+      color: var(--color-muted);
+      padding: 7px 6px;
+      border-radius: var(--radius-sm);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .preset-btn:hover {
+      background: rgba(245,158,11,0.12);
+      color: var(--color-bone);
+      border-color: var(--color-primary);
+    }
+    .preset-btn.active {
+      background: rgba(245,158,11,0.18);
+      color: var(--color-glow);
+      border-color: var(--color-glow);
+      box-shadow: 0 0 8px rgba(245,158,11,0.2);
+    }
+
+    /* ── Upload buttons ───────────────────────────────── */
+    .upload-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 11px 16px;
+      border-radius: var(--radius-sm);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      width: 100%;
+      text-align: center;
+      border: none;
+    }
+    .upload-btn-primary {
+      background: var(--color-primary);
+      color: #000;
+    }
+    .upload-btn-primary:hover {
+      background: var(--color-glow);
+      transform: translateY(-1px);
+    }
+    .upload-btn-ghost {
+      background: transparent;
+      color: var(--color-muted);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .upload-btn-ghost:hover {
+      background: rgba(255,255,255,0.04);
+      color: var(--color-bone);
+      border-color: rgba(255,255,255,0.2);
+    }
+    input[type="file"] { display: none; }
+
+    /* ── JSON area ────────────────────────────────────── */
+    textarea {
+      width: 100%;
+      height: 80px;
+      background: rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px;
+      color: var(--color-bone);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      padding: 8px;
+      resize: none;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    textarea:focus { border-color: var(--color-primary); }
+
+    .json-actions { display: flex; gap: 6px; }
+    .json-btn {
+      flex: 1;
+      padding: 7px 6px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    #btn-copy-json {
+      background: rgba(245,158,11,0.1);
+      border: 1px solid var(--color-primary);
+      color: var(--color-primary);
+    }
+    #btn-copy-json:hover { background: rgba(245,158,11,0.2); }
+    #btn-import-json {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: var(--color-muted);
+    }
+    #btn-import-json:hover { color: var(--color-bone); border-color: rgba(255,255,255,0.3); }
+
+    /* ── Viewer area ──────────────────────────────────── */
+    .viewer-area { display: flex; flex-direction: column; gap: 12px; }
+
+    .viewport {
+      background: var(--bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.55);
+    }
+
+    .viewport-header {
+      padding: 14px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .viewport-header .vp-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--color-muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .vp-badge {
+      font-size: 0.65rem;
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      background: rgba(245,158,11,0.12);
+      color: var(--color-primary);
+      border: 1px solid rgba(245,158,11,0.25);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .vp-res {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--color-muted);
+    }
+
+    /* ── Canvas container (split-view host) ───────────── */
+    .canvas-container {
+      position: relative;
+      width: 100%;
+      height: 640px;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      cursor: col-resize;
+      user-select: none;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      image-rendering: pixelated;
+    }
+
+    /* Split-view labels */
+    .split-label {
+      position: absolute;
+      top: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: var(--radius-pill);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      backdrop-filter: blur(8px);
+    }
+    .split-label.left  {
+      left: 14px;
+      background: rgba(0,0,0,0.6);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: var(--color-bone);
+    }
+    .split-label.right {
+      right: 14px;
+      background: rgba(245,158,11,0.15);
+      border: 1px solid rgba(245,158,11,0.3);
+      color: var(--color-primary);
+    }
+    /* Show labels when split is active (controlled by JS via --split-x CSS var) */
+    .canvas-container:has(.split-active) .split-label { opacity: 1; }
+
+    /* ── Viewport footer ──────────────────────────────── */
+    .viewport-footer {
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-top: 1px solid var(--color-border);
+      flex-wrap: wrap;
+    }
+
+    /* ── Split hint ───────────────────────────────────── */
+    #split-hint {
+      display: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--color-muted);
+    }
+    #split-hint kbd {
+      display: inline-block;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 0.68rem;
+      color: var(--color-bone);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ── Download button ──────────────────────────────── */
+    #btn-download {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: transparent;
+      border: 1px solid var(--color-primary);
+      color: var(--color-primary);
+      padding: 9px 18px;
+      border-radius: var(--radius-sm);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+    #btn-download:hover {
+      background: rgba(245,158,11,0.1);
+      color: var(--color-glow);
+    }
+
+    /* ── Res info ─────────────────────────────────────── */
+    .res-pair {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--color-muted);
+    }
+    .res-pair strong { color: var(--color-bone); }
+
+    /* ── Drag & Drop overlay ──────────────────────────── */
+    #drop-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(11,10,9,0.85);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      z-index: 1000;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      backdrop-filter: blur(4px);
+    }
+    #drop-overlay.visible { opacity: 1; pointer-events: auto; }
+    #drop-overlay .drop-icon {
+      font-size: 3rem;
+      animation: bounce 1s ease infinite alternate;
+    }
+    #drop-overlay p {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1rem;
+      color: var(--color-bone);
+      letter-spacing: 0.04em;
+    }
+    #drop-overlay small {
+      font-size: 0.8rem;
+      color: var(--color-muted);
+    }
+    .drop-ring {
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      border: 2px dashed var(--color-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: spin 8s linear infinite;
+    }
+
+    /* ── Sub-group helper ─────────────────────────────── */
+    .sub-group { display: flex; flex-direction: column; gap: 10px; }
+    .sub-row { display: flex; flex-direction: column; gap: 4px; }
+    .sub-label {
+      font-size: 0.8rem;
+      color: var(--color-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+    .sub-label span {
+      color: var(--color-glow);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+    }
+
+    /* ── Animations ───────────────────────────────────── */
+    @keyframes bounce {
+      from { transform: translateY(0); }
+      to   { transform: translateY(-10px); }
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Drop Overlay -->
+  <div id="drop-overlay" aria-hidden="true">
+    <div class="drop-ring">
+      <span class="drop-icon">⟁</span>
+    </div>
+    <p>Drop image or video</p>
+    <small>PNG · JPG · GIF · WebP · MP4 · WebM</small>
+  </div>
+
+  <header>
+    <h1>Phosphor Grid</h1>
+    <p>GPU subpixel renderer. Each source pixel is decomposed into physical R, G, B phosphor stripes — the eye optically mixes them at distance to reconstruct the original color.</p>
+  </header>
+
+  <main>
+    <!-- Control Panel -->
+    <div class="control-panel">
+
+      <!-- Source Asset -->
+      <div class="control-group">
+        <div class="section-title">Source Asset</div>
+        <label for="file-input" class="upload-btn upload-btn-primary" style="cursor:pointer;">
+          ↑ Upload Image
+        </label>
+        <input type="file" id="file-input" accept="image/*">
+        <label for="video-input" class="upload-btn upload-btn-ghost" style="cursor:pointer;">
+          ▶ Upload Video
+        </label>
+        <input type="file" id="video-input" accept="video/*">
+        <div style="font-size:0.72rem; color: var(--color-muted); margin-top:2px;">
+          Or drag & drop anywhere
+        </div>
+      </div>
+
+      <!-- Presets -->
+      <div class="control-group">
+        <div class="section-title">Monitor Presets</div>
+        <div class="presets-grid">
+          <button class="preset-btn" id="preset-trinitron">Trinitron</button>
+          <button class="preset-btn" id="preset-pvm">PVM</button>
+          <button class="preset-btn" id="preset-gameboy">Game Boy</button>
+          <button class="preset-btn" id="preset-vga">VGA</button>
+          <button class="preset-btn" id="preset-arcade">Arcade</button>
+          <button class="preset-btn" id="preset-oled">OLED</button>
+        </div>
+      </div>
+
+      <!-- Grid Settings -->
+      <div class="control-group">
+        <div class="section-title">Subpixel Grid</div>
+        <div class="sub-group">
+          <div class="sub-row">
+            <label>Subpixel Width <span id="val-width">1px</span></label>
+            <input type="range" id="param-width" min="1" max="8" value="1">
+          </div>
+          <div class="sub-row">
+            <label>Stripe Gap <span id="val-gap">0px</span></label>
+            <input type="range" id="param-gap" min="0" max="3" value="0">
+          </div>
+        </div>
+      </div>
+
+      <!-- Rendering Mode -->
+      <div class="control-group">
+        <div class="section-title">Rendering Mode</div>
+        <div class="radio-group">
+          <label>
+            <input type="radio" name="render-mode" id="render-grid" value="grid" checked>
+            Physical Grid (LCD/CRT)
+          </label>
+          <label>
+            <input type="radio" name="render-mode" id="render-cleartype" value="cleartype">
+            ClearType AA (Ultra-Sharp)
+          </label>
+        </div>
+      </div>
+
+      <!-- CRT Mask -->
+      <div class="control-group">
+        <div class="section-title">Phosphor Mask</div>
+        <select id="param-mask-type">
+          <option value="aperture">Aperture Grille (Stripes)</option>
+          <option value="shadow">Shadow Mask (Dots)</option>
+          <option value="slot">Slot Mask (Slots)</option>
+        </select>
+        <div class="sub-group" style="margin-top:6px;">
+          <div class="sub-row">
+            <div class="sub-label">Sharpness <span id="val-sharpness">1.0</span></div>
+            <input type="range" id="param-sharpness" min="0.5" max="4.0" value="1.0" step="0.1">
+          </div>
+          <div class="sub-row">
+            <div class="sub-label">Beam Bloom <span id="val-bloom">0.15</span></div>
+            <input type="range" id="param-bloom" min="0.0" max="3.0" value="0.15" step="0.01">
+          </div>
+        </div>
+      </div>
+
+      <!-- CRT Optics -->
+      <div class="control-group">
+        <div class="section-title">CRT Optics</div>
+        <div class="sub-group">
+          <div class="sub-row">
+            <div class="sub-label">Curvature <span id="val-curvature">0.00</span></div>
+            <input type="range" id="param-curvature" min="0.0" max="0.3" value="0.0" step="0.01">
+          </div>
+          <div class="sub-row">
+            <div class="sub-label">Vignette <span id="val-vignette">0.00</span></div>
+            <input type="range" id="param-vignette" min="0.0" max="0.8" value="0.0" step="0.01">
+          </div>
+          <div class="sub-row">
+            <div class="sub-label">Scanlines <span id="val-scanlines">0.00</span></div>
+            <input type="range" id="param-scanlines" min="0.0" max="1.0" value="0.0" step="0.05">
+          </div>
+        </div>
+      </div>
+
+      <!-- Analog Effects (NEW) -->
+      <div class="control-group">
+        <div class="section-title">Analog Effects</div>
+        <div class="sub-group">
+          <div class="sub-row">
+            <div class="sub-label">Film Grain <span id="val-noise">0.00</span></div>
+            <input type="range" id="param-noise" min="0.0" max="1.0" value="0.0" step="0.01">
+          </div>
+          <div class="sub-row">
+            <div class="sub-label">Phosphor Flicker <span id="val-flicker">0.00</span></div>
+            <input type="range" id="param-flicker" min="0.0" max="1.0" value="0.0" step="0.01">
+          </div>
+        </div>
+        <div style="font-size:0.68rem;color:var(--color-muted);line-height:1.5;margin-top:2px;">
+          Values &gt; 0 activate GPU animation loop
+        </div>
+      </div>
+
+      <!-- Texture Sharpness -->
+      <div class="control-group">
+        <div class="section-title">Texture Sampling</div>
+        <div class="sub-group">
+          <div class="sub-row">
+            <div class="sub-label">LOD Bias <span id="val-lod">-1.00</span></div>
+            <input type="range" id="param-lod" min="-2.0" max="0.0" value="-1.0" step="0.05">
+          </div>
+          <div class="sub-row">
+            <div class="sub-label">Detail Boost <span id="val-detail-boost">0.00</span></div>
+            <input type="range" id="param-detail-boost" min="0.0" max="3.0" value="0.0" step="0.1">
+          </div>
+        </div>
+      </div>
+
+      <!-- Color Temperature -->
+      <div class="control-group">
+        <div class="section-title">Color Temperature</div>
+        <label>White Point <span id="val-temp">6500K</span></label>
+        <input type="range" id="param-temp" min="5000" max="9300" value="6500" step="100">
+        <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--color-muted);margin-top:2px;">
+          <span>Warm 5000K</span>
+          <span>Cool 9300K</span>
+        </div>
+      </div>
+
+      <!-- Color Calibration -->
+      <div class="control-group">
+        <div class="section-title">Color Calibration</div>
+        <div class="sub-group">
+          <div class="sub-row">
+            <div class="sub-label">Saturation <span id="val-saturation">1.00</span></div>
+            <input type="range" id="param-saturation" min="0.0" max="2.0" value="1.0" step="0.05">
+          </div>
+          <div class="sub-row">
+            <div class="sub-label">Contrast <span id="val-contrast">1.00</span></div>
+            <input type="range" id="param-contrast" min="0.5" max="1.5" value="1.0" step="0.05">
+          </div>
+          <div class="sub-row">
+            <div class="sub-label">Black Level <span id="val-brightness">-0.05</span></div>
+            <input type="range" id="param-brightness" min="-0.2" max="0.2" value="-0.05" step="0.01">
+          </div>
+        </div>
+      </div>
+
+      <!-- Display Mode -->
+      <div class="control-group">
+        <div class="section-title">Display Mode</div>
+        <div class="radio-group">
+          <label>
+            <input type="radio" name="display-mode" id="mode-fit" value="fit" checked>
+            Fit to Viewport
+          </label>
+          <label>
+            <input type="radio" name="display-mode" id="mode-inspect" value="inspect">
+            100% Zoom (Inspect)
+          </label>
+        </div>
+      </div>
+
+      <!-- Preset JSON -->
+      <div class="control-group">
+        <div class="section-title">Preset JSON</div>
+        <textarea id="json-config-area" placeholder="Paste JSON config here…" spellcheck="false"></textarea>
+        <div class="json-actions">
+          <button id="btn-copy-json"   class="json-btn">Copy JSON</button>
+          <button id="btn-import-json" class="json-btn">Apply JSON</button>
+        </div>
+      </div>
+
+    </div><!-- /control-panel -->
+
+    <!-- Viewport -->
+    <div class="viewer-area">
+      <div class="viewport">
+        <div class="viewport-header">
+          <div class="vp-title">
+            Phosphor Grid Render
+            <span class="vp-badge">WebGL 2</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;">
+            <div class="res-pair">
+              <span>IN</span>
+              <strong id="orig-res">—</strong>
+            </div>
+            <div class="res-pair">
+              <span>OUT</span>
+              <strong id="target-res">—</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="canvas-container" id="canvas-container">
+          <!-- Split-view labels (shown when split is active) -->
+          <span class="split-label left">Original</span>
+          <span class="split-label right">Phosphor</span>
+
+          <!-- Source preview (used internally by the engine) -->
+          <img id="img-source" src="" alt="" style="display:none; position:absolute; pointer-events:none; opacity:0;">
+
+          <!-- Output canvas -->
+          <canvas id="canvas-target"></canvas>
+        </div>
+
+        <div class="viewport-footer">
+          <span id="split-hint">
+            <kbd>drag</kbd> to compare original vs phosphor &nbsp;·&nbsp; <kbd>dblclick</kbd> to reset
+          </span>
+          <button id="btn-download">
+            ↓ Download PNG
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phosphor Grid — Vector CSS Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-void:       #0B0A09;
+      --bg-card:       #151311;
+      --color-primary: #f59e0b;
+      --color-glow:    #fbbf24;
+      --color-bone:    #EFECE6;
+      --color-muted:   #928E85;
+      --color-border:  rgba(255,255,255,0.06);
+      --radius-md:     14px;
+      --radius-sm:     8px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-void);
+      color: var(--color-bone);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 24px 60px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+      max-width: 680px;
+    }
+
+    h1 {
+      font-family: 'Bricolage Grotesque', sans-serif;
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, var(--color-bone) 20%, var(--color-primary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    header p { font-size: 0.95rem; color: var(--color-muted); line-height: 1.65; }
+
+    main {
+      width: 100%;
+      max-width: 1200px;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 28px;
+      align-items: start;
+    }
+
+    /* ── Control panel ────────────────────────────────── */
+    .control-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.55);
+    }
+
+    .section-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-primary);
+      border-bottom: 1px solid rgba(245,158,11,0.2);
+      padding-bottom: 7px;
+      margin-bottom: 4px;
+    }
+
+    .control-group { display: flex; flex-direction: column; gap: 8px; }
+    .control-group label {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--color-bone);
+      display: flex;
+      justify-content: space-between;
+    }
+    .control-group label span {
+      color: var(--color-glow);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--color-primary);
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(245,158,11,0.5);
+    }
+
+    select {
+      width: 100%;
+      background: rgba(0,0,0,0.4);
+      color: var(--color-bone);
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      outline: none;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    select:hover { border-color: var(--color-primary); }
+    select option { background: #1c1a17; }
+
+    .upload-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 11px 16px;
+      border-radius: var(--radius-sm);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      width: 100%;
+      background: var(--color-primary);
+      color: #000;
+      border: none;
+    }
+    .upload-btn:hover { background: var(--color-glow); transform: translateY(-1px); }
+    input[type="file"] { display: none; }
+
+    .note {
+      font-size: 0.75rem;
+      color: var(--color-muted);
+      line-height: 1.5;
+      padding: 8px 10px;
+      background: rgba(255,255,255,0.03);
+      border-radius: 6px;
+      border: 1px solid var(--color-border);
+    }
+
+    /* Toggle */
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      font-size: 0.875rem;
+      color: var(--color-bone);
+    }
+    .toggle-switch {
+      position: relative;
+      width: 36px;
+      height: 20px;
+    }
+    .toggle-switch input { display: none; }
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.08);
+      border-radius: 10px;
+      transition: background 0.2s;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .toggle-thumb {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 14px;
+      height: 14px;
+      background: var(--color-muted);
+      border-radius: 50%;
+      transition: transform 0.2s, background 0.2s;
+    }
+    .toggle-switch input:checked ~ .toggle-track { background: rgba(245,158,11,0.3); border-color: var(--color-primary); }
+    .toggle-switch input:checked ~ .toggle-thumb { transform: translateX(16px); background: var(--color-primary); }
+
+    /* ── Viewer area ──────────────────────────────────── */
+    .viewer-area { display: flex; flex-direction: column; gap: 20px; }
+
+    .viewports-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .viewport {
+      background: var(--bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.55);
+    }
+
+    .viewport-header {
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--color-border);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--color-muted);
+    }
+
+    .preview-container {
+      position: relative;
+      height: 500px;
+      background: #000;
+      overflow: hidden;
+    }
+
+    .image-wrapper {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .image-wrapper img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    /* Vector subpixel mask overlay */
+    #mask-overlay {
+      position: absolute;
+      pointer-events: none;
+      background: linear-gradient(
+        to right,
+        rgb(255,0,0)   0%,      rgb(255,0,0)   33.33%,
+        rgb(0,255,0)   33.33%,  rgb(0,255,0)   66.66%,
+        rgb(0,0,255)   66.66%,  rgb(0,0,255)   100%
+      );
+      background-size: 3px 100%;
+      mix-blend-mode: multiply;
+      transition: background-size 0.1s ease;
+    }
+
+    /* Soft gradient gradient variant */
+    #mask-overlay.soft {
+      background: repeating-linear-gradient(
+        to right,
+        rgba(255,0,0,0.9)   0px,
+        rgba(255,0,0,0.9)   1px,
+        rgba(255,100,0,0.4) 2px,
+        rgba(0,255,0,0.9)   4px,
+        rgba(0,255,0,0.9)   5px,
+        rgba(0,100,255,0.4) 6px,
+        rgba(0,0,255,0.9)   7px,
+        rgba(0,0,255,0.9)   8px,
+        rgba(100,0,255,0.4) 9px
+      );
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Vector CSS Phosphor Grid</h1>
+    <p>Pure CSS repeating gradient blended with the source image. Infinite vector resolution, zero WebGL overhead. Ideal for rapid subpixel pattern prototyping.</p>
+  </header>
+
+  <main>
+    <div class="control-panel">
+
+      <div class="control-group">
+        <div class="section-title">Source Asset</div>
+        <label for="file-input" class="upload-btn" style="cursor:pointer;">↑ Upload Image</label>
+        <input type="file" id="file-input" accept="image/*">
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">Pixel Pitch</div>
+        <label>Triad Width <span id="val-pitch">3px</span></label>
+        <input type="range" id="param-pitch" min="3" max="30" value="3" step="3">
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">Blend Mode</div>
+        <select id="param-blend">
+          <option value="multiply">Multiply — Classic CRT</option>
+          <option value="screen">Screen — Inverted glow</option>
+          <option value="overlay">Overlay — High contrast</option>
+          <option value="color">Color — Hue separation</option>
+          <option value="hard-light">Hard Light — Punch</option>
+          <option value="luminosity">Luminosity — Brightness only</option>
+        </select>
+        <div class="note">
+          <strong style="color:var(--color-bone)">Multiply</strong> is physically accurate: dark stripes suppress color, mimicking real phosphor geometry.
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">Gradient Shape</div>
+        <label class="toggle-label">
+          Soft phosphor edges
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-soft">
+            <div class="toggle-track"></div>
+            <div class="toggle-thumb"></div>
+          </label>
+        </label>
+        <div class="note">
+          Hard stops = sharp digital pixel grid.<br>
+          Soft = cosine-like phosphor bleeding between channels.
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">Stats</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;color:var(--color-muted);line-height:1.8;">
+          Source: <span id="orig-res" style="color:var(--color-bone)">—</span><br>
+          Approach: Vector CSS<br>
+          Scale: Infinite (no rasterize)
+        </div>
+      </div>
+
+    </div>
+
+    <div class="viewer-area">
+      <div class="viewports-grid">
+        <div class="viewport">
+          <div class="viewport-header">
+            <span>Original Image</span>
+            <span id="res-label">0 × 0</span>
+          </div>
+          <div class="preview-container">
+            <div class="image-wrapper">
+              <img id="img-source" src="" alt="Upload an image" style="display:none;">
+            </div>
+          </div>
+        </div>
+
+        <div class="viewport">
+          <div class="viewport-header">
+            <span>Vector Blended Render</span>
+            <span style="color:var(--color-primary)">∞ Scale</span>
+          </div>
+          <div class="preview-container" id="preview-target">
+            <div class="image-wrapper">
+              <img id="img-target" src="" alt="Upload an image" style="display:none;">
+              <div id="mask-overlay" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const fileInput   = document.getElementById('file-input');
+    const imgSource   = document.getElementById('img-source');
+    const imgTarget   = document.getElementById('img-target');
+    const maskOverlay = document.getElementById('mask-overlay');
+    const paramPitch  = document.getElementById('param-pitch');
+    const valPitch    = document.getElementById('val-pitch');
+    const origRes     = document.getElementById('orig-res');
+    const resLabel    = document.getElementById('res-label');
+    const paramBlend  = document.getElementById('param-blend');
+    const toggleSoft  = document.getElementById('toggle-soft');
+    const previewTarget = document.getElementById('preview-target');
+
+    // ── File load ──────────────────────────────────────
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const src = ev.target.result;
+        imgSource.src = src;
+        imgSource.style.display = 'block';
+        imgTarget.src = src;
+        imgTarget.style.display = 'block';
+        maskOverlay.style.display = 'block';
+
+        imgSource.onload = () => {
+          const label = `${imgSource.naturalWidth} × ${imgSource.naturalHeight}`;
+          origRes.textContent = label;
+          resLabel.textContent = label;
+          syncOverlay();
+        };
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // ── Pitch slider ───────────────────────────────────
+    paramPitch.addEventListener('input', () => {
+      const pitch = parseInt(paramPitch.value);
+      valPitch.textContent = `${pitch}px`;
+      applyMask(pitch);
+    });
+
+    // ── Blend mode ─────────────────────────────────────
+    paramBlend.addEventListener('change', () => {
+      maskOverlay.style.mixBlendMode = paramBlend.value;
+    });
+
+    // ── Soft toggle ────────────────────────────────────
+    toggleSoft.addEventListener('change', () => {
+      maskOverlay.classList.toggle('soft', toggleSoft.checked);
+      applyMask(parseInt(paramPitch.value));
+    });
+
+    function applyMask(pitch) {
+      if (toggleSoft.checked) {
+        // Soft: cosine-like bleed between channels
+        const r = Math.round(pitch / 3);
+        maskOverlay.classList.add('soft');
+        maskOverlay.style.backgroundSize = `${r * 3}px 100%`;
+      } else {
+        maskOverlay.classList.remove('soft');
+        maskOverlay.style.backgroundSize = `${pitch}px 100%`;
+      }
+    }
+
+    // ── Overlay position sync (ResizeObserver — no setInterval) ──
+    function syncOverlay() {
+      if (!imgTarget.complete || imgTarget.style.display === 'none') return;
+
+      const wrapper = imgTarget.parentElement;
+      const containerW = wrapper.clientWidth;
+      const containerH = wrapper.clientHeight;
+      if (!imgTarget.naturalWidth || !imgTarget.naturalHeight) return;
+
+      const imgAspect = imgTarget.naturalWidth / imgTarget.naturalHeight;
+      const boxAspect = containerW / containerH;
+
+      let dw, dh;
+      if (imgAspect > boxAspect) {
+        dw = containerW;
+        dh = containerW / imgAspect;
+      } else {
+        dh = containerH;
+        dw = containerH * imgAspect;
+      }
+
+      const left = (containerW - dw) / 2;
+      const top  = (containerH - dh) / 2;
+
+      maskOverlay.style.width  = `${dw}px`;
+      maskOverlay.style.height = `${dh}px`;
+      maskOverlay.style.left   = `${left}px`;
+      maskOverlay.style.top    = `${top}px`;
+    }
+
+    // ResizeObserver replaces setInterval — fires only when size actually changes
+    const ro = new ResizeObserver(syncOverlay);
+    ro.observe(previewTarget);
+
+    // Sync when image finishes rendering after src change
+    imgTarget.addEventListener('load', () => {
+      requestAnimationFrame(syncOverlay);
+    });
+  </script>
+</body>
+</html>
