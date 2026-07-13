@@ -16,7 +16,7 @@ export interface Preset {
   curvature: number;
   vignette: number;
   scanlines: number;
-  maskType: 'aperture' | 'shadow' | 'slot';
+  maskType: 'aperture' | 'shadow' | 'slot' | 'lcd';
   colorTempK: number;
   brightness: number;
   contrast: number;
@@ -141,7 +141,7 @@ export const PRESETS: Preset[] = [
   {
     id: 'oled',
     label: 'OLED Pixel',
-    description: 'Modern OLED panel — Perfect blacks, razor-sharp subpixels',
+    description: 'Modern OLED panel — Perfect blacks, hard-edged LCD subpixel grid',
     subpixelWidth: 3,
     gap: 1,
     renderingMode: 'grid',
@@ -150,7 +150,7 @@ export const PRESETS: Preset[] = [
     curvature: 0.0,
     vignette: 0.0,
     scanlines: 0.0,
-    maskType: 'aperture',
+    maskType: 'lcd',
     colorTempK: 6500,
     brightness: 0.0,
     contrast: 1.0,

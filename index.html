@@ -291,6 +291,28 @@
     }
     #btn-import-json:hover { color: var(--color-bone); border-color: rgba(255,255,255,0.3); }
 
+    /* ── Performance Stats Panel ──────────────────────── */
+    .stats-panel {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .stats-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .stats-val {
+      font-weight: 500;
+      color: var(--color-glow);
+    }
+
     /* ── Viewer area ──────────────────────────────────── */
     .viewer-area { display: flex; flex-direction: column; gap: 12px; }
 
@@ -414,6 +436,37 @@
       font-family: 'JetBrains Mono', monospace;
     }
 
+    /* ── Video controls bar ───────────────────────────── */
+    .video-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 1;
+    }
+    .vc-btn {
+      padding: 6px 14px;
+      border-radius: var(--radius-sm);
+      background: rgba(245,158,11,0.1);
+      border: 1px solid var(--color-primary);
+      color: var(--color-primary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .vc-btn:hover {
+      background: rgba(245,158,11,0.2);
+      color: var(--color-glow);
+    }
+    .vc-speed {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+
     /* ── Download button ──────────────────────────────── */
     #btn-download {
       display: none;
@@ -489,6 +542,76 @@
       animation: spin 8s linear infinite;
     }
 
+    /* ── Preset Comparator ────────────────────────────── */
+    .comparator-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(11,10,9,0.9);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 24px;
+      backdrop-filter: blur(4px);
+    }
+    .comparator-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 22px;
+      width: 100%;
+      max-width: 1100px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+    }
+    .comparator-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      color: var(--color-bone);
+    }
+    .comparator-checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .comparator-checkboxes label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      color: var(--color-muted);
+      background: rgba(245,158,11,0.05);
+      border: 1px solid rgba(245,158,11,0.15);
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+    .comparator-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+    }
+    .comparator-cell { display: flex; flex-direction: column; gap: 6px; }
+    .comparator-cell canvas {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      background: #000;
+      border-radius: var(--radius-sm);
+      image-rendering: pixelated;
+      display: block;
+    }
+    .comparator-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--color-muted);
+    }
+
     /* ── Sub-group helper ─────────────────────────────── */
     .sub-group { display: flex; flex-direction: column; gap: 10px; }
     .sub-row { display: flex; flex-direction: column; gap: 4px; }
@@ -546,6 +669,9 @@
           ▶ Upload Video
         </label>
         <input type="file" id="video-input" accept="video/*">
+        <button type="button" id="btn-webcam" class="upload-btn upload-btn-ghost">⏺ Use Webcam</button>
+        <button type="button" id="btn-stop-webcam" class="upload-btn upload-btn-ghost" style="display:none; border-color:#e11d48; color:#e11d48;">■ Stop Webcam</button>
+        <video id="webcam-source" style="display:none;" muted playsinline></video>
         <div style="font-size:0.72rem; color: var(--color-muted); margin-top:2px;">
           Or drag & drop anywhere
         </div>
@@ -562,6 +688,7 @@
           <button class="preset-btn" id="preset-arcade">Arcade</button>
           <button class="preset-btn" id="preset-oled">OLED</button>
         </div>
+        <button type="button" id="btn-open-comparator" class="json-btn" style="width:100%; margin-top:8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.15); color: var(--color-muted);">⊞ Compare Presets</button>
       </div>
 
       <!-- Grid Settings -->
@@ -601,6 +728,7 @@
           <option value="aperture">Aperture Grille (Stripes)</option>
           <option value="shadow">Shadow Mask (Dots)</option>
           <option value="slot">Slot Mask (Slots)</option>
+          <option value="lcd">LCD / OLED (Hard Grid)</option>
         </select>
         <div class="sub-group" style="margin-top:6px;">
           <div class="sub-row">
@@ -608,8 +736,8 @@
             <input type="range" id="param-sharpness" min="0.5" max="4.0" value="1.0" step="0.1">
           </div>
           <div class="sub-row">
-            <div class="sub-label">Beam Bloom <span id="val-bloom">0.15</span></div>
-            <input type="range" id="param-bloom" min="0.0" max="3.0" value="0.15" step="0.01">
+            <div class="sub-label">Beam Bloom <span id="val-bloom">1.00</span></div>
+            <input type="range" id="param-bloom" min="0.0" max="3.0" value="1.00" step="0.01">
           </div>
         </div>
       </div>
@@ -642,12 +770,27 @@
             <input type="range" id="param-noise" min="0.0" max="1.0" value="0.0" step="0.01">
           </div>
           <div class="sub-row">
-            <div class="sub-label">Phosphor Flicker <span id="val-flicker">0.00</span></div>
-            <input type="range" id="param-flicker" min="0.0" max="1.0" value="0.0" step="0.01">
+            <div class="sub-label">Phosphor Flicker <span id="val-flicker">0.10</span></div>
+            <input type="range" id="param-flicker" min="0.0" max="1.0" value="0.1" step="0.01">
           </div>
         </div>
         <div style="font-size:0.68rem;color:var(--color-muted);line-height:1.5;margin-top:2px;">
           Values &gt; 0 activate GPU animation loop
+        </div>
+      </div>
+
+      <!-- Color Space -->
+      <div class="control-group">
+        <div class="section-title">Output Color Space</div>
+        <select id="param-colorspace">
+          <option value="srgb"  selected>sRGB — Standard (IEC 61966)</option>
+          <option value="linear">Linear RGB — Raw signal</option>
+          <option value="hdr">HDR Sim — Extended highlights</option>
+        </select>
+        <div style="font-size:0.68rem;color:var(--color-muted);line-height:1.5;margin-top:6px;">
+          <strong style="color:var(--color-bone)">sRGB</strong> → proper gamma for web displays<br>
+          <strong style="color:var(--color-bone)">Linear</strong> → raw phosphor energy (no gamma)<br>
+          <strong style="color:var(--color-bone)">HDR</strong> → Reinhard extended highlights
         </div>
       </div>
 
@@ -656,12 +799,12 @@
         <div class="section-title">Texture Sampling</div>
         <div class="sub-group">
           <div class="sub-row">
-            <div class="sub-label">LOD Bias <span id="val-lod">-1.00</span></div>
-            <input type="range" id="param-lod" min="-2.0" max="0.0" value="-1.0" step="0.05">
+            <div class="sub-label">LOD Bias <span id="val-lod">-0.60</span></div>
+            <input type="range" id="param-lod" min="-2.0" max="0.0" value="-0.6" step="0.05">
           </div>
           <div class="sub-row">
-            <div class="sub-label">Detail Boost <span id="val-detail-boost">0.00</span></div>
-            <input type="range" id="param-detail-boost" min="0.0" max="3.0" value="0.0" step="0.1">
+            <div class="sub-label">Detail Boost <span id="val-detail-boost">0.30</span></div>
+            <input type="range" id="param-detail-boost" min="0.0" max="3.0" value="0.3" step="0.1">
           </div>
         </div>
       </div>
@@ -721,6 +864,58 @@
         </div>
       </div>
 
+      <!-- Performance Tier -->
+      <div class="control-group">
+        <div class="section-title">Performance</div>
+        <select id="perf-tier">
+          <option value="auto"   selected>Auto</option>
+          <option value="high">High — Full detail</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low — Mobile-friendly</option>
+        </select>
+        <div style="font-size:0.68rem;color:var(--color-muted);line-height:1.5;margin-top:6px;">
+          Trades optional detail (film grain, sharpening) for speed. The original/comparison image is always rendered at full resolution — this never reduces canvas quality.
+        </div>
+      </div>
+
+      <!-- Video Enhancement -->
+      <div class="control-group">
+        <div class="section-title">Video Enhancement</div>
+        <div class="radio-group">
+          <label>
+            <input type="checkbox" id="chk-smooth-motion">
+            Smooth Motion (frame blending)
+          </label>
+          <label>
+            <input type="checkbox" id="chk-upscale-sharpen">
+            Sharp Upscale (FSR-style)
+          </label>
+        </div>
+        <div style="font-size:0.68rem;color:var(--color-muted);line-height:1.5;margin-top:6px;">
+          <strong style="color:var(--color-bone)">Smooth Motion</strong> renders at your display's refresh rate, blending between decoded frames for less judder on low-fps video.<br>
+          <strong style="color:var(--color-bone)">Sharp Upscale</strong> reconstructs the source with a Catmull-Rom upscale + clamped sharpen before the phosphor mask.
+        </div>
+      </div>
+
+      <!-- Performance Diagnostics (NEW) -->
+      <div class="control-group">
+        <div class="section-title">Diagnostics & Performance</div>
+        <div class="stats-panel">
+          <div class="stats-row">
+            <span>FPS:</span>
+            <span id="stat-fps" class="stats-val">—</span>
+          </div>
+          <div class="stats-row">
+            <span>Render Time:</span>
+            <span id="stat-ms" class="stats-val">—</span>
+          </div>
+          <div class="stats-row">
+            <span>GPU Alloc:</span>
+            <span id="stat-gpu" class="stats-val">Optimal</span>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /control-panel -->
 
     <!-- Viewport -->
@@ -756,6 +951,19 @@
         </div>
 
         <div class="viewport-footer">
+          <!-- Video controls: shown only when a video source is active -->
+          <div id="video-controls" class="video-controls" style="display:none;">
+            <span id="live-badge" style="display:none; font-family:'JetBrains Mono',monospace; font-size:0.75rem; font-weight:600; color:#e11d48;">● LIVE</span>
+            <button id="btn-play-pause" class="vc-btn">⏸ Pause</button>
+            <div class="vc-speed">
+              <label style="font-size:0.7rem;color:var(--color-muted);">Speed</label>
+              <input type="range" id="video-speed" min="0.25" max="2.0" value="1.0" step="0.25"
+                style="width:80px;height:3px;">
+              <span id="val-speed" style="font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--color-glow);min-width:30px;">1.00×</span>
+            </div>
+            <span id="video-time" style="font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--color-muted);margin-left:4px;">00:00 / 00:00</span>
+          </div>
+
           <span id="split-hint">
             <kbd>drag</kbd> to compare original vs phosphor &nbsp;·&nbsp; <kbd>dblclick</kbd> to reset
           </span>
@@ -767,6 +975,18 @@
     </div>
 
   </main>
+
+  <!-- Preset Comparator -->
+  <div id="comparator-overlay" class="comparator-overlay" aria-hidden="true">
+    <div class="comparator-panel">
+      <div class="comparator-header">
+        <span>Preset Comparator</span>
+        <button type="button" id="btn-close-comparator" class="json-btn" style="flex:none; padding:6px 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.15); color: var(--color-muted);">✕ Close</button>
+      </div>
+      <div class="comparator-checkboxes" id="comparator-checkboxes"></div>
+      <div class="comparator-grid" id="comparator-grid"></div>
+    </div>
+  </div>
 
   <script type="module" src="/src/main.ts"></script>
 </body>

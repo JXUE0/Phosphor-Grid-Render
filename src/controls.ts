@@ -13,7 +13,7 @@ export interface ControlValues {
   curvature: number;
   vignette: number;
   scanlines: number;
-  maskType: 'aperture' | 'shadow' | 'slot';
+  maskType: 'aperture' | 'shadow' | 'slot' | 'lcd';
   colorTempK: number;
   brightness: number;
   contrast: number;
@@ -94,7 +94,7 @@ export function bindControls(onChange: ChangeCallback): {
       curvature:      parseFloat(paramCurvature.value),
       vignette:       parseFloat(paramVignette.value),
       scanlines:      parseFloat(paramScanlines.value),
-      maskType:       paramMaskType.value as 'aperture' | 'shadow' | 'slot',
+      maskType:       paramMaskType.value as 'aperture' | 'shadow' | 'slot' | 'lcd',
       colorTempK:     parseInt(paramTemp.value),
       brightness:     parseFloat(paramBrightness.value),
       contrast:       parseFloat(paramContrast.value),
