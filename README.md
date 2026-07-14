@@ -3,7 +3,7 @@
 A GPU‑accelerated CRT phosphor sub‑pixel renderer built with **TypeScript**, **WebGL 2** and **Vite**. Decompose each source pixel into its physical R, G, B sub‑pixel components (stripes/dots) and simulate real display optics such as aperture grille, shadow mask, phosphor bloom, curvature, vignette, scanlines, noise and flicker.
 
 <p align="center">
-  <img src="preview.pngf" alt="Phosphor Grid Simulator Demo" width="600px" />
+  <img src="docs/preview.png" alt="Phosphor Grid Simulator Demo" width="600px" />
 </p>
 
 > **Live demo:** [https://JXUE0.github.io/Phosphor-Grid-Render/]
