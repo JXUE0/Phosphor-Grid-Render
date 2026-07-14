@@ -32,7 +32,6 @@ const btnCopyJson    = document.getElementById('btn-copy-json')    as HTMLButton
 const btnImportJson  = document.getElementById('btn-import-json')  as HTMLButtonElement;
 const splitHint      = document.getElementById('split-hint')       as HTMLElement | null;
 const container      = document.getElementById('canvas-container') as HTMLElement;
-const canvasContainer = container;
 
 // Video-specific UI
 const videoControls  = document.getElementById('video-controls')   as HTMLElement | null;
