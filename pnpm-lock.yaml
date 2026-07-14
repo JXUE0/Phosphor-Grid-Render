@@ -11,6 +11,9 @@ importers:
       gh-pages:
         specifier: ^6.1.1
         version: 6.3.0
+      main:
+        specifier: ^1000.0.1
+        version: 1000.0.1
       typescript:
         specifier: ^5.2.2
         version: 5.9.3
@@ -419,6 +422,9 @@ packages:
   locate-path@5.0.0:
     resolution: {integrity: sha512-t7hw9pI+WvuwNJXwk5zVHpyhIqzg2qTlklJOf0mVxGSbe3Fp2VieZcduNYjaLDoy6p9uGpQEGWG87WpMKlNq8g==}
     engines: {node: '>=8'}
+
+  main@1000.0.1:
+    resolution: {integrity: sha512-zhB0yIsogMo0xGJEusCzS4I13ejvhEJ1MOWi1OR4n77HyhlqgvNNwhOOt5moSdTYd+Vi8B4wPE/MDmhquNHxrA==}
 
   make-dir@3.1.0:
     resolution: {integrity: sha512-g3FeP20LNwhALb/6Cz6Dd4F2ngze0jz7tbzrD2wAV+o9FeNHe4rL+yK2md0J/fiSf1sa1ADhXqi5+oVwOM/eGw==}
@@ -845,6 +851,8 @@ snapshots:
   locate-path@5.0.0:
     dependencies:
       p-locate: 4.1.0
+
+  main@1000.0.1: {}
 
   make-dir@3.1.0:
     dependencies:
