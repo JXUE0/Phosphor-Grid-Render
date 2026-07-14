@@ -148,7 +148,7 @@ export class PhosphorGrid {
     this.lodBias        = options.lodBias        ?? -0.6;
     this.detailBoost    = options.detailBoost    ?? 0.3;
     this.noise             = options.noise             ?? 0.0;
-    this.flicker           = options.flicker           ?? 0.0;
+    this.flicker           = options.flicker           ?? 0.1;
     this.outputColorspace  = options.outputColorspace  ?? 'srgb';
 
     this.initWebGL();
