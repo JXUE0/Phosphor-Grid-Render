@@ -2,9 +2,7 @@
 
 A GPU‑accelerated CRT phosphor sub‑pixel renderer built with **TypeScript**, **WebGL 2** and **Vite**. Decompose each source pixel into its physical R, G, B sub‑pixel components (stripes/dots) and simulate real display optics such as aperture grille, shadow mask, phosphor bloom, curvature, vignette, scanlines, noise and flicker.
 
-![Phosphor Grid Screenshot](https://raw.githubusercontent.com/JXUE0/Phosphor-Grid-Render/main/docs/screenshot.png)
-
-> **Live demo:** https://JXUE0.github.io/Phosphor-Grid-Render/
+> **Live demo:** [https://JXUE0.github.io/Phosphor-Grid-Render/]
 
 ## Features
 
@@ -76,15 +74,6 @@ Each control modifies a specific aspect of the phosphor simulation. Below is a b
 | | **Sharp Upscale** | Applies a FSR‑style Catmull‑Rom upscale + clamped sharpen before the phosphor mask. |
 | **Diagnostics** | **FPS / Render Time / GPU Alloc** | Real‑time performance stats shown in the lower‑left corner. |
 
-> [!TIP]
-> **Sample Render**  
-> A sample video (`sample-video.mp4`) is included in the repository root. To view the phosphor effect in action:
-> 1. Click the **▶ Upload Video** button and select `sample-video.mp4`, OR
-> 2. Drag & drop `sample-video.mp4` onto the page  
->   
-> This video demonstrates the Trinitron preset with visible scanlines, bloom, and curvature effects.  
->   
-> *Video credit: By Yura Forrat from Pexels (https://www.pexels.com/es-es/video/37898782/)*
 
 ## License
 
