@@ -78,6 +78,8 @@ Each control modifies a specific aspect of the phosphor simulation. Below is a b
 | | **Sharp Upscale** | Applies a FSR‑style Catmull‑Rom upscale + clamped sharpen before the phosphor mask. |
 | **Diagnostics** | **FPS / Render Time / GPU Alloc** | Real‑time performance stats shown in the lower‑left corner. |
 
+## DeepWiki
+https://deepwiki.com/JXUE0/Phosphor-Grid-Render/1-overview
 
 ## License
 
