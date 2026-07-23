@@ -1,9 +1,36 @@
 {
   "name": "phosphor-grid",
-  "private": true,
+  "private": false,
   "version": "1.0.0",
+  "description": "GPU-accelerated WebGL phosphor display simulator.",
   "type": "module",
   "homepage": "https://JXUE0.github.io/Phosphor-Grid-Render",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JXUE0/Phosphor-Grid-Render.git"
+  },
+  "bugs": {
+    "url": "https://github.com/JXUE0/Phosphor-Grid-Render/issues"
+  },
+  "keywords": [
+    "webgl",
+    "crt",
+    "phosphor",
+    "shader",
+    "display-simulator"
+  ],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "packageManager": "pnpm@11.0.8",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

@@ -862,8 +862,9 @@ btnDownload.addEventListener('click', () => {
   if (!activeSource) return;
 
   if (activeSource instanceof HTMLVideoElement) {
-    // Video: export the current displayed frame (no mode change needed)
-    // The canvas already has the latest rendered frame with preserveDrawingBuffer:true
+    // Render immediately before capture: the regular context can discard its
+    // drawing buffer after presentation, which keeps live rendering faster.
+    engine.render(activeSource, modeInspect.checked, currentTime(), isComparing ? 0.5 : splitX, currentQualityLevel(), 1.0, upscaleSharpenEnabled);
     const dataUrl = canvasTarget.toDataURL('image/png');
     const a = document.createElement('a');
     a.href     = dataUrl;

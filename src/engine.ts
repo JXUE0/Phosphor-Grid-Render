@@ -117,13 +117,13 @@ export class PhosphorGrid {
 
     // Prefer WebGL 2 for native NPOT mipmap support
     let gl: WebGL2RenderingContext | WebGLRenderingContext | null =
-      this.canvas.getContext('webgl2', { preserveDrawingBuffer: true }) as WebGL2RenderingContext | null;
+      this.canvas.getContext('webgl2', { preserveDrawingBuffer: false }) as WebGL2RenderingContext | null;
     if (gl) {
       this.isWebGL2 = true;
     } else {
       gl = (
-        this.canvas.getContext('webgl', { preserveDrawingBuffer: true }) ||
-        this.canvas.getContext('experimental-webgl', { preserveDrawingBuffer: true })
+        this.canvas.getContext('webgl', { preserveDrawingBuffer: false }) ||
+        this.canvas.getContext('experimental-webgl', { preserveDrawingBuffer: false })
       ) as WebGLRenderingContext | null;
     }
     if (!gl) throw new Error('WebGL not supported in this browser.');
@@ -660,7 +660,7 @@ export class PhosphorGrid {
   }
 
   /** Uploads pixels into this.texture, reusing GPU storage when dims are unchanged. */
-  private uploadIntoCurrentTexture(uploadSource: TexImageSource, w: number, h: number): void {
+  private uploadIntoCurrentTexture(uploadSource: TexImageSource, w: number, h: number, generateMipmaps: boolean): void {
     const gl = this.gl;
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
@@ -672,9 +672,11 @@ export class PhosphorGrid {
       this.lastTexW = w;
       this.lastTexH = h;
     }
-    // Mipmaps for clean downscaling (WebGL1 can't mipmap NPOT — fall back to LINEAR)
+    // Video is uploaded every decoded frame, so avoid rebuilding its full mip chain.
+    // The detail-boost path is the only shader feature that needs mip levels.
     const isPOT = Number.isInteger(Math.log2(w)) && Number.isInteger(Math.log2(h));
-    if (this.isWebGL2 || isPOT) {
+    if (generateMipmaps && (this.isWebGL2 || isPOT)) {
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
       gl.generateMipmap(gl.TEXTURE_2D);
     } else {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -700,7 +702,7 @@ export class PhosphorGrid {
     // Previous frame is only blendable if it holds a same-size frame
     this.hasPrevFrame = this.prevTexW === w && this.prevTexH === h;
 
-    this.uploadIntoCurrentTexture(this.videoFrameToCanvas(video, w, h), w, h);
+    this.uploadIntoCurrentTexture(this.videoFrameToCanvas(video, w, h), w, h, false);
     this.videoFrameMode = true;
     this.lastPushedVideo = video;
   }
@@ -719,7 +721,7 @@ export class PhosphorGrid {
    * interpolation) and/or upscales+sharpens the result into prepTexture, sized
    * at the output resolution when upscaling or at source resolution otherwise.
    */
-  private runPrepPass(srcW: number, srcH: number, outW: number, outH: number, mix: number, upscale: boolean): void {
+  private runPrepPass(srcW: number, srcH: number, outW: number, outH: number, mix: number, upscale: boolean, generateMipmaps: boolean): void {
     const gl = this.gl;
     if (!this.prepProgram || !this.prepFBO || !this.prepTexture) return;
 
@@ -751,9 +753,13 @@ export class PhosphorGrid {
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-    if (this.isWebGL2) {
+    if (generateMipmaps && this.isWebGL2) {
       gl.bindTexture(gl.TEXTURE_2D, this.prepTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
       gl.generateMipmap(gl.TEXTURE_2D);
+    } else {
+      gl.bindTexture(gl.TEXTURE_2D, this.prepTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     }
   }
 
@@ -895,10 +901,11 @@ export class PhosphorGrid {
     // Skipped when the caller already fed this exact frame via pushVideoFrame()
     // (the smooth-interpolation path — render() just re-samples what's resident).
     const skipUpload = source instanceof HTMLVideoElement && this.videoFrameMode && this.lastPushedVideo === source;
+    const generateMipmaps = source instanceof HTMLImageElement && qualityLevel > 0 && this.detailBoost > 0;
     if (!skipUpload) {
       const uploadSource: TexImageSource =
         source instanceof HTMLVideoElement ? this.videoFrameToCanvas(source, w, h) : source;
-      this.uploadIntoCurrentTexture(uploadSource, w, h);
+      this.uploadIntoCurrentTexture(uploadSource, w, h, generateMipmaps);
     }
 
     // ── Optional preprocessing: temporal blend + FSR-style upscale ──
@@ -906,7 +913,7 @@ export class PhosphorGrid {
     // samples the uploaded texture directly, exactly as before this feature.
     const usePrepPass = !!(this.prepProgram && this.prepFBO) && (frameMix < 0.999 || upscaleSharpen);
     if (usePrepPass) {
-      this.runPrepPass(w, h, finalWidth, finalHeight, frameMix, upscaleSharpen);
+      this.runPrepPass(w, h, finalWidth, finalHeight, frameMix, upscaleSharpen, generateMipmaps);
     }
 
     gl.viewport(0, 0, finalWidth, finalHeight);

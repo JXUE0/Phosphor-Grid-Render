@@ -39,6 +39,17 @@ pnpm dev       # or: npm run dev
 
 Open <http://localhost:5100> in your browser.
 
+## Publishing
+
+Pushing a version tag such as `v1.0.0` runs the GitHub Actions publishing workflow. It uses npm trusted publishing (OIDC), so no registry token is stored in GitHub.
+
+Before the first release, configure `phosphor-grid` in npm as a trusted publisher for the `JXUE0/Phosphor-Grid-Render` repository and the `Publish package` workflow. Then update `version` in `package.json`, commit it, and push the matching tag:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 ## Usage
 
 1. **Load a source** – click **↑ Upload Image**, **▶ Upload Video**, or **⏺ Use Webcam**. You can also drag & drop any image/video file onto the page.  
