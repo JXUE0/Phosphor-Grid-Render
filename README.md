@@ -1,3 +1,5 @@
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/JXUE0/Phosphor-Grid-Render)
+
 # Phosphor Grid Simulator
 
 A GPU‑accelerated CRT phosphor sub‑pixel renderer built with **TypeScript**, **WebGL 2** and **Vite**. Decompose each source pixel into its physical R, G, B sub‑pixel components (stripes/dots) and simulate real display optics such as aperture grille, shadow mask, phosphor bloom, curvature, vignette, scanlines, noise and flicker.
@@ -89,6 +91,8 @@ Each control modifies a specific aspect of the phosphor simulation. Below is a b
 | | **Sharp Upscale** | Applies a FSR‑style Catmull‑Rom upscale + clamped sharpen before the phosphor mask. |
 | **Diagnostics** | **FPS / Render Time / GPU Alloc** | Real‑time performance stats shown in the lower‑left corner. |
 
+## DeepWiki
+https://deepwiki.com/JXUE0/Phosphor-Grid-Render/1-overview
 
 ## License
 
